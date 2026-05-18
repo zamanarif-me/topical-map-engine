@@ -1,11 +1,82 @@
-"""Briefs page — generate and download content briefs per pillar."""
+"""
+Briefs page — async brief generation with progress tracking.
 
+Uses threading to avoid Streamlit Cloud timeout.
+Progress is shown via polling — user sees real-time updates.
+"""
+
+import time
+import threading
 import streamlit as st
 from pathlib import Path
 
 
+# ── Background worker ─────────────────────────────────────────────────────────
+
+def _run_brief_generation(
+    pillar_id: str,
+    max_clusters: int,
+    output,
+    output_dir: str,
+    state: dict,
+) -> None:
+    """Runs in a background thread. Updates state dict for UI polling."""
+    try:
+        from stages.brief_batch import run_batch_for_pillar
+
+        # Find target pillar
+        pillar = next(
+            (p for p in output.topical_map.pillars if p.id == pillar_id),
+            None,
+        )
+        if not pillar:
+            state["error"] = f"Pillar {pillar_id} not found"
+            state["done"]  = True
+            return
+
+        state["status"] = f"Generating pillar brief: {pillar.title[:50]}..."
+
+        # Override print to capture progress
+        import builtins
+        original_print = builtins.print
+
+        def capture_print(*args, **kwargs):
+            msg = " ".join(str(a) for a in args)
+            state["logs"].append(msg)
+            state["status"] = msg
+            original_print(*args, **kwargs)
+
+        builtins.print = capture_print
+
+        try:
+            briefs_dir = Path(output_dir) / "briefs"
+            package = run_batch_for_pillar(
+                pillar=pillar,
+                topical_map=output.topical_map,
+                output_dir=briefs_dir,
+                include_clusters=max_clusters > 0,
+                max_clusters=max_clusters,
+                delay_between_calls=0.5,
+                auto_correct_ids=True,
+            )
+            state["package"]  = package
+            state["done"]     = True
+            state["status"]   = f"Done! {package.total_generated} briefs generated."
+        finally:
+            builtins.print = original_print
+
+    except Exception as e:
+        import traceback
+        state["error"] = str(e)
+        state["trace"] = traceback.format_exc()
+        state["done"]  = True
+
+
+# ── Main render ───────────────────────────────────────────────────────────────
+
 def render_briefs():
-    output = st.session_state.get("output")
+    output     = st.session_state.get("output")
+    output_dir = st.session_state.get("output_dir", "streamlit_output")
 
     if not output:
         st.warning("No topical map found. Generate one first.")
@@ -50,16 +121,18 @@ def render_briefs():
         max_clusters = st.slider(
             "Number of cluster briefs",
             min_value=0,
-            max_value=len(pillar.clusters),
-            value=min(3, len(pillar.clusters)),
+            max_value=min(len(pillar.clusters), 5),
+            value=min(2, len(pillar.clusters)),
         )
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
         total_briefs = 1 + max_clusters
-        est_cost = 0.12 + max_clusters * 0.10
-        st.markdown(f"**{total_briefs} briefs** · estimated cost **~${est_cost:.2f}**")
+        est_cost     = 0.12 + max_clusters * 0.10
+        est_time     = total_briefs * 25
+        st.markdown(
+            f"**{total_briefs} briefs** · ~${est_cost:.2f} · ~{est_time}s"
+        )
 
-    # Cluster preview
     if max_clusters > 0:
         st.markdown("**Clusters that will get briefs:**")
         for c in pillar.clusters[:max_clusters]:
@@ -67,53 +140,86 @@ def render_briefs():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # ── State management ──────────────────────────────────────────────────────
+    brief_key    = f"brief_state_{pillar.id}_{max_clusters}"
+    package_key  = f"brief_package_{pillar.id}_{max_clusters}"
+
     # ── Generate button ───────────────────────────────────────────────────────
-    brief_key = f"briefs_{pillar.id}_{max_clusters}"
+    col_btn, col_cancel = st.columns([3, 1])
+    with col_btn:
+        generate_clicked = st.button(
+            "🚀 Generate Briefs",
+            use_container_width=True,
+            disabled=bool(st.session_state.get(brief_key + "_running")),
+        )
+    with col_cancel:
+        if st.session_state.get(brief_key + "_running"):
+            if st.button("⏹ Stop", use_container_width=True):
+                st.session_state[brief_key + "_running"] = False
+                st.rerun()
 
-    if st.button("🚀 Generate Briefs", use_container_width=True):
-        output_dir = Path(st.session_state.get("output_dir", "streamlit_output")) / "briefs"
+    if generate_clicked:
+        # Initialize state
+        state = {
+            "done":    False,
+            "error":   None,
+            "trace":   None,
+            "status":  "Starting...",
+            "logs":    [],
+            "package": None,
+        }
+        st.session_state[brief_key]           = state
+        st.session_state[brief_key + "_running"] = True
 
-        progress = st.progress(0)
-        status = st.empty()
+        # Launch background thread
+        thread = threading.Thread(
+            target=_run_brief_generation,
+            args=(pillar.id, max_clusters, output, output_dir, state),
+            daemon=True,
+        )
+        thread.start()
+        st.rerun()
 
-        try:
-            from stages.brief_batch import run_batch_for_pillar
-            import builtins
+    # ── Progress display ──────────────────────────────────────────────────────
+    state = st.session_state.get(brief_key)
 
-            original_print = print
-            def ui_print(*args, **kwargs):
-                msg = " ".join(str(a) for a in args)
-                status.markdown(f"*{msg}*")
-                original_print(*args, **kwargs)
+    if state and st.session_state.get(brief_key + "_running"):
+        if not state.get("done"):
+            # Still running — show progress and auto-refresh
+            st.info(f"⏳ {state.get('status', 'Working...')}")
 
-            builtins.print = ui_print
+            logs = state.get("logs", [])
+            if logs:
+                log_html = "<div class='log-box'>" + "<br>".join(
+                    f"<span style='color:#43e97b'>{l}</span>"
+                    for l in logs[-15:]
+                ) + "</div>"
+                st.markdown(log_html, unsafe_allow_html=True)
 
-            package = run_batch_for_pillar(
-                pillar=pillar,
-                topical_map=tm,
-                output_dir=output_dir,
-                include_clusters=max_clusters > 0,
-                max_clusters=max_clusters,
-                delay_between_calls=0.5,
-                auto_correct_ids=True,
-            )
-            st.session_state[brief_key] = package
-            progress.progress(1.0)
-            status.markdown("✅ **Briefs generated!**")
+            # Auto-refresh every 2 seconds
+            time.sleep(2)
+            st.rerun()
 
-        except Exception as e:
-            st.error(f"Brief generation failed: {e}")
-            import traceback
-            st.code(traceback.format_exc())
-            return
-        finally:
-            builtins.print = original_print
+        else:
+            # Done
+            st.session_state[brief_key + "_running"] = False
 
-    # ── Show results if available ─────────────────────────────────────────────
-    package = st.session_state.get(brief_key)
-    if package:
+            if state.get("error"):
+                st.error(f"❌ Failed: {state['error']}")
+                if state.get("trace"):
+                    with st.expander("Error details"):
+                        st.code(state["trace"])
+            else:
+                package = state.get("package")
+                if package:
+                    st.session_state[package_key] = package
+                    st.success(f"✅ {package.total_generated} briefs generated!")
+
+    # ── Show results ──────────────────────────────────────────────────────────
+    package = st.session_state.get(package_key)
+    if package and package.total_generated > 0:
         st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown(f"### Results: {package.total_generated} briefs")
+        st.markdown(f"### Download Briefs")
 
         # Validation summary
         if package.validation:
@@ -121,34 +227,33 @@ def render_briefs():
             if total_issues == 0:
                 st.success(f"✅ All {package.total_generated} briefs validated — no broken page IDs.")
             else:
-                st.warning(f"⚠️ {total_issues} broken page IDs found and auto-corrected.")
+                st.warning(f"⚠️ {total_issues} broken IDs auto-corrected.")
 
         # Download buttons
-        st.markdown("**Download individual briefs:**")
         for path in package.get_markdown_paths():
             if path.exists() and not path.name.startswith("_"):
                 st.download_button(
-                    label=f"📄 {path.stem}",
+                    label=f"📄 {path.stem.replace('brief_', '')}",
                     data=path.read_text(),
                     file_name=path.name,
                     mime="text/markdown",
                     key=f"dl_{path.stem}",
                 )
 
-        # Also offer JSON bundle
-        json_path = Path(st.session_state.get("output_dir", "streamlit_output")) / "briefs" / "all_briefs.json"
+        # JSON bundle
+        briefs_dir = Path(output_dir) / "briefs"
+        json_path  = briefs_dir / "all_briefs.json"
         if json_path.exists():
             st.download_button(
-                label="📦 all_briefs.json (full bundle)",
+                label="📦 all_briefs.json",
                 data=json_path.read_text(),
                 file_name="all_briefs.json",
                 mime="application/json",
                 key="dl_all_briefs",
             )
 
-        # Brief preview
+        # Preview
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("**Preview:**")
         for page_id, brief in package.briefs.items():
             with st.expander(f"📄 {brief.page_title}"):
                 st.markdown(f"**Information Gain:** {brief.information_gain_angle}")
@@ -157,14 +262,13 @@ def render_briefs():
                 st.markdown(f"**Primary Query:** `{brief.queries.primary_query}`")
                 st.markdown("")
                 st.markdown("**Heading Structure:**")
-                for h in brief.headings:
-                    indent = "&nbsp;" * (int(h.level[1]) - 1) * 4
-                    st.markdown(
-                        f"{indent}**{h.level}:** {h.text}",
-                        unsafe_allow_html=True,
-                    )
-                st.markdown("")
-                st.markdown(f"**Semantic Bridges ({len(brief.semantic_bridges)}):**")
-                for b in brief.semantic_bridges[:3]:
-                    strength = float(b.relationship_strength) if b.relationship_strength else 0.0
-                    st.markdown(f"  • [{strength:.2f}] `{b.link_destination}` — *{b.anchor_suggestion}*")
+                for h in brief.headings[:8]:
+                    depth = int(h.level[1]) - 1 if len(h.level) > 1 and h.level[1].isdigit() else 0
+                    indent = "&nbsp;" * depth * 4
+                    st.markdown(f"{indent}**{h.level}:** {h.text}", unsafe_allow_html=True)
+                if brief.semantic_bridges:
+                    st.markdown("")
+                    st.markdown(f"**Semantic Bridges ({len(brief.semantic_bridges)}):**")
+                    for b in brief.semantic_bridges[:3]:
+                        strength = float(b.relationship_strength) if b.relationship_strength else 0.0
+                        st.markdown(f"  • [{strength:.2f}] → `{b.link_destination}`")

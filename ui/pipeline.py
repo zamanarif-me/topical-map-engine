@@ -110,7 +110,13 @@ GEMINI_API_KEY=...
                 serp_lang="en",
             )
             st.session_state.output = output
-            st.session_state.output_dir = str(output_dir)
+            # Use session directory if auto-saved
+            session_id = getattr(output, "_session_id", None)
+            if session_id:
+                from ui.session_manager import get_session_output_dir
+                st.session_state.output_dir = get_session_output_dir(session_id)
+            else:
+                st.session_state.output_dir = str(output_dir)
             progress_bar.progress(1.0)
             status_text.markdown("✅ **Pipeline complete!**")
 

@@ -28,17 +28,20 @@ from pydantic import BaseModel
 
 ENTITY_BRIDGE_PROMPT = """You are a semantic SEO strategist.
 
-Your task: given a topical map, identify ENTITY BRIDGE links only.
+Your task: given a topical map, generate ENTITY BRIDGE links.
 
-An entity bridge is a cross-pillar link where a cluster page links to a
-DIFFERENT pillar because they share a key entity. These are the strategic
-links that build topical authority across silos.
+An entity bridge is a cross-pillar link where a CLUSTER links to a DIFFERENT PILLAR because they share a key entity.
 
-Rules:
-- Each bridge must name the shared entity in reasoning (max 8 words)
-- Generate 2-3 bridges per pillar (going outward to other pillars)
-- Anchor text: 3-6 words, natural language
-- Only link from CLUSTERS to other PILLARS (not pillar-to-pillar)
+MANDATORY RULES:
+- You MUST generate at least 2 bridges per pillar — this is required, not optional
+- Each bridge: from a cluster_id to a different pillar_id
+- Shared entity: name the specific entity connecting them (e.g. WooCommerce, Elementor, Core Web Vitals)
+- Anchor text: 3-6 natural words
+- Reasoning: max 8 words naming the shared entity
+- relationship_strength: decimal 0.0-1.0 (e.g. 0.85), NOT text like strong
+
+If pillars share ANY common entity, technology, or topic — create a bridge.
+Do NOT return an empty links array. Always generate bridges.
 
 Output ONLY valid JSON:
 {

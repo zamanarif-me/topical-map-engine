@@ -163,6 +163,17 @@ def run_pipeline(
     _log("Pipeline complete.")
     tracker.print_report()
     tracker.save_report(output_dir / "cost_report.json")
+
+    # Auto-save session
+    try:
+        from ui.session_manager import save_session, _session_id
+        session_id = _session_id(seed.seed_keyword)
+        save_session(final_output, session_id)
+        _log(f"Session saved: {session_id}")
+        final_output._session_id = session_id
+    except Exception as e:
+        _log(f"Session save skipped: {e}")
+
     return final_output
 
 

@@ -197,9 +197,13 @@ from ui.intake import render_intake
 from ui.pipeline import render_pipeline
 from ui.results import render_results
 from ui.briefs import render_briefs
+from ui.sidebar import render_sidebar
 
 if "page" not in st.session_state:
     st.session_state.page = "home"
+
+# Render sidebar on every page
+render_sidebar()
 
 page = st.session_state.page
 
