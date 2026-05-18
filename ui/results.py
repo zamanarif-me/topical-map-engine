@@ -189,6 +189,29 @@ def _render_export(output, output_dir):
             mime="text/markdown",
         )
 
+    # CSV (Koray format)
+    csv_path = out_path / "topical_map.csv"
+    if csv_path.exists():
+        st.download_button(
+            label="📊 topical_map.csv (Koray format — Excel ready)",
+            data=csv_path.read_bytes(),
+            file_name="topical_map.csv",
+            mime="text/csv",
+        )
+    else:
+        # Generate on-the-fly if not saved yet
+        try:
+            from stages.render import render_koray_csv
+            csv_data = render_koray_csv(output)
+            st.download_button(
+                label="📊 topical_map.csv (Koray format — Excel ready)",
+                data=csv_data.encode("utf-8-sig"),
+                file_name="topical_map.csv",
+                mime="text/csv",
+            )
+        except Exception as e:
+            st.warning(f"CSV generation failed: {e}")
+
     # Cost report
     cost_path = out_path / "cost_report.json"
     if cost_path.exists():
