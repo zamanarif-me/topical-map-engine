@@ -91,4 +91,83 @@ def save_outputs(output: EngineOutput, output_dir: str | Path) -> dict[str, Path
     # Markdown
     md_path.write_text(render_markdown(output))
 
-    return {"json": json_path, "markdown": md_path}
+    # CSV (Koray format)
+    csv_path = out_dir / "topical_map.csv"
+    csv_path.write_text(render_koray_csv(output), encoding="utf-8-sig")  # utf-8-sig for Excel
+
+    return {"json": json_path, "markdown": md_path, "csv": csv_path}
+
+
+def render_koray_csv(output: EngineOutput) -> str:
+    """
+    Export topical map as Koray-format CSV.
+
+    Columns (matching the user's original CSV):
+      Contextual Vector | Contextual Hierarchy | Contextual Connection | Query Terms | Volume
+
+    Structure:
+      H1  → Pillar page
+      H2  → Cluster page
+      H3  → Supplementary node
+    """
+    import csv, io
+    out = io.StringIO()
+    writer = csv.writer(out)
+
+    # Header — exact match to original CSV
+    writer.writerow([
+        "Contextual Vector",
+        "Contextual Hierarchy",
+        "Contextual Connection",
+        "Query Terms",
+        "Volume",
+    ])
+
+    tm = output.topical_map
+
+    # Site-level central entity
+    writer.writerow([
+        tm.central_entity.primary,
+        "site_entity",
+        tm.central_entity.source_context[:120],
+        "",
+        "",
+    ])
+
+    for pillar in tm.pillars:
+        # H1 — Pillar
+        pillar_queries = " | ".join(q.text for q in pillar.representative_queries[:3])
+        writer.writerow([
+            pillar.title,
+            "h1",
+            f"[{pillar.intent.value}] [{pillar.funnel_stage.value}] Priority {pillar.priority}",
+            pillar_queries,
+            "",
+        ])
+
+        for cluster in pillar.clusters:
+            # H2 — Cluster
+            cluster_queries = " | ".join(q.text for q in cluster.represented_queries[:3])
+            writer.writerow([
+                cluster.title,
+                "h2",
+                pillar.title,
+                cluster_queries,
+                "",
+            ])
+
+            # H3 — Supplementary nodes
+            for node in cluster.supplementary_nodes:
+                angle = f"[{node.angle}] " if node.angle else ""
+                writer.writerow([
+                    node.title,
+                    "h3",
+                    cluster.title,
+                    f"{angle}{node.funnel_stage.value}",
+                    "",
+                ])
+
+        # Blank separator between pillars
+        writer.writerow(["", "", "", "", ""])
+
+    return out.getvalue()
