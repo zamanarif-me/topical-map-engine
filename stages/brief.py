@@ -177,11 +177,22 @@ def _cluster_ctx(cluster: Cluster, parent: Pillar, topical_map: TopicalMap) -> d
 
 
 _INSTRUCTIONS = (
-    "CRITICAL: headings must be a JSON array of objects: "
-    '[{"level": "H1", "text": "...", "semantic_purpose": "..."}, ...]\n'
+    "CRITICAL — every top-level field is REQUIRED, none may be omitted or empty:\n"
+    "  page_id, page_title, page_type, central_entity, section_type,\n"
+    "  information_gain_angle, queries, entity_attribute_map, headings, nlp_terms,\n"
+    "  content_specs, serp_target, semantic_bridges, next_destination,\n"
+    "  eeat_requirements, quality_checklist.\n"
+    "CRITICAL: headings is an array of OBJECTS like "
+    '[{"level":"H1","text":"...","semantic_purpose":"..."}]. '
+    "Include at least 8 headings, with one CONTRADICTION H2 and one TROUBLESHOOTING H2.\n"
+    "CRITICAL: semantic_bridges must contain AT LEAST 2 entries, each pointing to a "
+    "DIFFERENT pillar from `other_pillars_for_bridges`. Use the real page_ids.\n"
     "CRITICAL: relationship_strength must be a decimal number like 0.85, NOT text.\n"
-    "CRITICAL: featured_snippet must be true or false (boolean).\n"
-    "Output ONLY valid JSON."
+    "CRITICAL: featured_snippet must be true or false (boolean), NOT text.\n"
+    "CRITICAL: next_destination.next_page_id must be a real page_id from the context.\n"
+    "CRITICAL: entity_attribute_map lists must each contain at least 2 items.\n"
+    "CRITICAL: nlp_terms.must_include must contain at least 3 entities.\n"
+    "Output ONLY valid JSON — no fences, no preamble, no commentary."
 )
 
 

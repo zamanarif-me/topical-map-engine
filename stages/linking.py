@@ -166,10 +166,104 @@ Output ONLY valid JSON."""
             response_model=_BridgeResponse,
             max_tokens=4000,
         )
-        return response.links
+        # Validate: every bridge must reference real cluster→different pillar
+        valid_cluster_ids = {c.id for p in pillars for c in p.clusters}
+        valid_pillar_ids  = {p.id for p in pillars}
+        cluster_to_pillar = {c.id: p.id for p in pillars for c in p.clusters}
+
+        clean: list[InternalLink] = []
+        for link in response.links:
+            if link.from_page_id not in valid_cluster_ids:
+                continue
+            if link.to_page_id not in valid_pillar_ids:
+                continue
+            if cluster_to_pillar.get(link.from_page_id) == link.to_page_id:
+                continue  # not a cross-pillar bridge
+            link.relationship = LinkRelationship.ENTITY_BRIDGE
+            clean.append(link)
+        return clean
     except Exception as e:
-        print(f"  [linking] Entity bridge generation failed: {e}. Skipping bridges.")
+        print(f"  [linking] LLM entity-bridge generation failed: {e}. Falling back to deterministic bridges.")
         return []
+
+
+def _deterministic_entity_bridges(pillars: list[Pillar], min_per_pillar: int = 2) -> list[InternalLink]:
+    """
+    Build entity bridges purely from shared entities between clusters and other pillars.
+    Used as a fallback (or supplement) to LLM bridges so the linking plan is never empty.
+    """
+    links: list[InternalLink] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _norm(e: str) -> str:
+        return e.strip().lower()
+
+    pillar_entities = {
+        p.id: {_norm(e) for e in (p.related_entities or [])}
+        for p in pillars
+    }
+
+    for pillar in pillars:
+        bridges_for_this_pillar = 0
+        target_min = min_per_pillar
+
+        # Pass 1: real entity overlap (cluster ↔ different pillar)
+        for cluster in pillar.clusters:
+            if bridges_for_this_pillar >= target_min:
+                break
+            cluster_ents = {_norm(e) for e in (cluster.related_entities or [])} \
+                           | {_norm(cluster.title)}
+            for other in pillars:
+                if other.id == pillar.id:
+                    continue
+                shared = cluster_ents & pillar_entities[other.id]
+                if not shared:
+                    continue
+                entity = sorted(shared)[0].title()
+                key = (cluster.id, other.id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append(InternalLink(
+                    from_page_id=cluster.id,
+                    to_page_id=other.id,
+                    anchor_text=f"{entity} considerations"[:55],
+                    relationship=LinkRelationship.ENTITY_BRIDGE,
+                    reasoning=f"Shared {entity} entity bridge.",
+                    relationship_strength=0.85,
+                ))
+                bridges_for_this_pillar += 1
+                if bridges_for_this_pillar >= target_min:
+                    break
+
+        # Pass 2: if still under target, force-link first clusters to first other pillars (weak bridges)
+        if bridges_for_this_pillar < target_min and pillar.clusters:
+            others = [p for p in pillars if p.id != pillar.id]
+            ci = 0
+            oi = 0
+            attempts = 0
+            while bridges_for_this_pillar < target_min and attempts < 20:
+                attempts += 1
+                cluster = pillar.clusters[ci % len(pillar.clusters)]
+                other = others[oi % len(others)] if others else None
+                if other is None:
+                    break
+                key = (cluster.id, other.id)
+                if key not in seen:
+                    seen.add(key)
+                    links.append(InternalLink(
+                        from_page_id=cluster.id,
+                        to_page_id=other.id,
+                        anchor_text=other.title[:55],
+                        relationship=LinkRelationship.ENTITY_BRIDGE,
+                        reasoning="Topical adjacency bridge.",
+                        relationship_strength=0.45,
+                    ))
+                    bridges_for_this_pillar += 1
+                ci += 1
+                if ci % len(pillar.clusters) == 0:
+                    oi += 1
+    return links
 
 
 # ── Main builder ──────────────────────────────────────────────────────────────
@@ -190,6 +284,21 @@ def build_linking_plan(pillars: list[Pillar]) -> LinkingPlan:
 
     # LLM — one call only
     bridges = _generate_entity_bridges(pillars)
+
+    # Count bridges per pillar; top up with deterministic bridges where short
+    bridge_count: dict[str, int] = {p.id: 0 for p in pillars}
+    cluster_to_pillar = {c.id: p.id for p in pillars for c in p.clusters}
+    for b in bridges:
+        owner = cluster_to_pillar.get(b.from_page_id)
+        if owner is not None:
+            bridge_count[owner] += 1
+
+    pillars_needing_more = [p for p in pillars if bridge_count[p.id] < 2]
+    if pillars_needing_more:
+        print(f"  [linking] Topping up entity bridges for {len(pillars_needing_more)} pillars via deterministic fallback")
+        fallback = _deterministic_entity_bridges(pillars_needing_more, min_per_pillar=2)
+        bridges.extend(fallback)
+
     all_links.extend(bridges)
 
     # Deduplicate
@@ -201,5 +310,7 @@ def build_linking_plan(pillars: list[Pillar]) -> LinkingPlan:
             continue
         seen.add(key)
         deduped.append(link)
+
+    print(f"  [linking] Total entity bridges: {sum(1 for l in deduped if l.relationship == LinkRelationship.ENTITY_BRIDGE)}")
 
     return LinkingPlan(links=deduped, homepage_links=homepage_links)

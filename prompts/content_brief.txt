@@ -117,4 +117,99 @@ Before finalizing the brief, verify:
 
 # Output
 
-Output ONLY valid JSON. No preamble, no fences.
+Output ONLY valid JSON matching the schema below — every field is REQUIRED. No preamble, no fences, no commentary.
+
+```json
+{
+  "page_id": "<copy from page context>",
+  "page_title": "<copy from page context>",
+  "page_type": "pillar | cluster | supplementary",
+  "parent_pillar": "<parent pillar title, or null if this is itself a pillar>",
+  "central_entity": "<the single most important entity for this page>",
+  "section_type": "CORE | OUTER",
+  "information_gain_angle": "This page uniquely explains [rare attribute / hidden mechanism / counter-intuitive insight].",
+  "queries": {
+    "primary_query": "<broad representative query>",
+    "secondary_queries": ["<specific query 1>", "<specific query 2>", "<specific query 3>"],
+    "question_queries": ["<PAA question 1>", "<PAA question 2>", "<PAA question 3>"],
+    "journey_stage": "awareness | evaluation | implementation | troubleshooting | scaling | optimization | recovery"
+  },
+  "entity_attribute_map": {
+    "core_attributes": ["<attribute 1>", "<attribute 2>"],
+    "performance_states": ["<state 1>", "<state 2>"],
+    "failure_modes": ["<mode 1>", "<mode 2>"],
+    "dependencies": ["<dependency 1>", "<dependency 2>"],
+    "optimization_levers": ["<lever 1>", "<lever 2>"]
+  },
+  "headings": [
+    {"level": "H1", "text": "<information-gain page title>", "semantic_purpose": "Primary entity declaration + information gain framing"},
+    {"level": "H2", "text": "<semantic state 1>", "semantic_purpose": "<what this section satisfies>"},
+    {"level": "H3", "text": "<entity attribute or question>", "semantic_purpose": "<why>"},
+    {"level": "H2", "text": "Why [common belief] Is Wrong About <topic>", "semantic_purpose": "Contradiction / myth-busting section (MANDATORY)"},
+    {"level": "H2", "text": "How to Troubleshoot <topic>", "semantic_purpose": "Troubleshooting section"}
+  ],
+  "nlp_terms": {
+    "must_include": ["<entity 1>", "<entity 2>", "<entity 3>"],
+    "should_include": ["<supporting entity 1>", "<supporting entity 2>"],
+    "semantic_variants": ["<variant 1>", "<variant 2>"]
+  },
+  "content_specs": {
+    "recommended_word_count": 2200,
+    "content_format": "article | guide | comparison | tutorial | case_study | faq",
+    "reading_level": "intermediate",
+    "pov": "second_person | first_person_expert | third_person",
+    "e_e_a_t_signals": ["<signal 1>", "<signal 2>"]
+  },
+  "serp_target": {
+    "featured_snippet": true,
+    "featured_snippet_section": "<H2 text targeted>",
+    "featured_snippet_format": "paragraph | list | table",
+    "people_also_ask": ["<question 1>", "<question 2>", "<question 3>"],
+    "schema_markup": "Article | HowTo | FAQ | Service | LocalBusiness"
+  },
+  "semantic_bridges": [
+    {
+      "bridge_point": "When discussing <topic>...",
+      "link_destination": "<page_id of a DIFFERENT pillar from other_pillars_for_bridges>",
+      "anchor_suggestion": "<3-6 word natural anchor>",
+      "shared_entity": "<entity that connects them>",
+      "relationship_strength": 0.85
+    }
+  ],
+  "next_destination": {
+    "next_page_id": "<id of the logical next page from the topical map>",
+    "next_page_title": "<its title>",
+    "transition_reason": "<why this is the logical next step>",
+    "transition_anchor": "<CTA text>"
+  },
+  "eeat_requirements": {
+    "author_expertise": "<credentials/experience>",
+    "experience_signals": ["<first-hand signal 1>", "<first-hand signal 2>"],
+    "trust_signals": ["<citation/data 1>", "<citation/data 2>"],
+    "ymyl_considerations": null
+  },
+  "quality_checklist": {
+    "h1_applies_information_gain": true,
+    "has_contradiction_section": true,
+    "entity_attributes_expanded": true,
+    "next_destination_set": true,
+    "semantic_bridges_explicit": true,
+    "serp_target_realistic": true,
+    "progresses_awareness_to_troubleshooting": true,
+    "nlp_terms_differentiated": true
+  }
+}
+```
+
+CRITICAL RULES — NON-NEGOTIABLE:
+- headings MUST be a JSON array of OBJECTS (not strings) each with `level`, `text`, `semantic_purpose`.
+- Generate AT LEAST 8 headings — one H1, multiple H2/H3, including one CONTRADICTION H2 and (for cluster/pillar pages) one TROUBLESHOOTING H2.
+- semantic_bridges MUST contain AT LEAST 2 entries linking to DIFFERENT pillars from `other_pillars_for_bridges`. Use their page_ids verbatim.
+- relationship_strength MUST be a decimal between 0.0 and 1.0 (e.g. 0.85). NEVER text like "strong".
+- featured_snippet MUST be a boolean (true / false). NEVER text.
+- next_destination.next_page_id MUST be one of the real page_ids visible in the page context.
+- nlp_terms.must_include MUST contain at least 3 entities — never empty.
+- entity_attribute_map: every list must contain at least 2 items — never empty.
+- queries.secondary_queries MUST contain at least 3 items.
+- recommended_word_count: integer between 1500 and 4000 based on intent (pillar pages ≥ 2500).
+- Output ONLY the JSON object. No fences, no preamble, no trailing text.
