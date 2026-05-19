@@ -185,15 +185,50 @@ def render_briefs():
 
     if state and st.session_state.get(brief_key + "_running"):
         if not state.get("done"):
-            # Still running — show progress and auto-refresh
-            st.info(f"⏳ {state.get('status', 'Working...')}")
+            # Spinning animation + progress
+            status = state.get("status", "Working...")
+            logs   = state.get("logs", [])
+            done_count = sum(1 for l in logs if "brief done" in l.lower() or "saved:" in l.lower())
+            total_count = 1 + max_clusters
 
-            logs = state.get("logs", [])
+            st.markdown(f"""
+<div style="display:flex; align-items:center; gap:1rem; padding:1rem;
+            background:#13131a; border:1px solid #1e1e2e; border-radius:12px; margin-bottom:1rem;">
+    <div style="width:48px; height:48px; flex-shrink:0;">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+            <style>
+                .spin {{ animation: rotate 1.2s linear infinite; transform-origin: 24px 24px; }}
+                @keyframes rotate {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+            </style>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="#1e1e2e" stroke-width="4"/>
+            <path class="spin" d="M24 4 A20 20 0 0 1 44 24" fill="none" stroke="#6c63ff" stroke-width="4" stroke-linecap="round"/>
+        </svg>
+    </div>
+    <div style="flex:1;">
+        <div style="font-size:0.9rem; font-weight:500; color:#e8e8f0; margin-bottom:0.3rem;">
+            Generating briefs... {done_count}/{total_count}
+        </div>
+        <div style="background:#1e1e2e; border-radius:4px; height:6px; margin-bottom:0.4rem;">
+            <div style="background:#6c63ff; height:6px; border-radius:4px;
+                        width:{min(100, int(done_count/total_count*100))}%; transition:width 0.5s;"></div>
+        </div>
+        <div style="font-size:0.78rem; color:#6b6b8a; font-family:DM Mono,monospace;
+                    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            {status[:80]}
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
             if logs:
-                log_html = "<div class='log-box'>" + "<br>".join(
-                    f"<span style='color:#43e97b'>{l}</span>"
-                    for l in logs[-15:]
-                ) + "</div>"
+                log_html = (
+                    "<div class='log-box' style='max-height:180px;'>"
+                    + "<br>".join(
+                        f"<span style='color:{'#43e97b' if 'done' in l.lower() or 'saved' in l.lower() else '#6b6b8a'}'>{l}</span>"
+                        for l in logs[-12:]
+                    )
+                    + "</div>"
+                )
                 st.markdown(log_html, unsafe_allow_html=True)
 
             # Auto-refresh every 2 seconds
