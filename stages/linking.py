@@ -152,8 +152,11 @@ def _generate_entity_bridges(pillars: list[Pillar]) -> list[InternalLink]:
 {json.dumps(compact_map, indent=2)}
 ```
 
-Generate 2-3 entity bridge links per pillar (outward only).
-Each bridge: a cluster from one pillar → a different pillar sharing an entity.
+MANDATORY: Generate at least 2 entity bridge links per pillar.
+Total minimum: {len(pillars) * 2} bridges for {len(pillars)} pillars.
+Each bridge: from_page_id must be a cluster_id, to_page_id must be a DIFFERENT pillar_id.
+relationship_strength: decimal like 0.85 (NOT text like strong).
+Do NOT return empty links array.
 Output ONLY valid JSON."""
 
     try:
@@ -161,7 +164,7 @@ Output ONLY valid JSON."""
             system_prompt=ENTITY_BRIDGE_PROMPT,
             user_message=user_message,
             response_model=_BridgeResponse,
-            max_tokens=3000,
+            max_tokens=4000,
         )
         return response.links
     except Exception as e:
