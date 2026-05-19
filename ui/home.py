@@ -38,7 +38,7 @@ def render_home():
 <div style="display:flex; flex-direction:column; gap:0.8rem; padding-top:1rem;">
 
 <div class="metric-card">
-    <div class="metric-value">88%</div>
+    <div class="metric-value">89%</div>
     <div class="metric-label">Koray Framework Coverage</div>
 </div>
 
@@ -50,6 +50,11 @@ def render_home():
 <div class="metric-card">
     <div class="metric-value">~$1</div>
     <div class="metric-label">Cost per Topical Map</div>
+</div>
+
+<div class="metric-card">
+    <div class="metric-value">8</div>
+    <div class="metric-label">Export Formats</div>
 </div>
 
 </div>
@@ -90,6 +95,18 @@ Topics validated against real SERP data — strong / medium / weak signal per pi
 """)
     with c6:
         st.markdown("""
-**📦 Export**
-JSON + Markdown report for every run. Content briefs as individual downloadable files.
+**📊 Export — JSON · MD · CSV**
+Full JSON + Markdown report. Koray-format CSV (Excel ready) with Contextual Vector / Hierarchy / Connection columns.
+""")
+
+    c7, c8, _ = st.columns(3)
+    with c7:
+        st.markdown("""
+**🗂️ Session History**
+Every run auto-saved. Reload any previous map from the sidebar — or upload a saved JSON to restore.
+""")
+    with c8:
+        st.markdown("""
+**💰 Cost Tracker**
+Per-run cost report: LLM calls, token usage, Serper calls. Monthly projection included.
 """)
