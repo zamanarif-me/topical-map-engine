@@ -357,4 +357,20 @@ def save_briefs(briefs: dict[str, ContentBrief], output_dir) -> list[Path]:
         indent=2,
     ))
     paths.append(json_path)
+
+    # CSV + DOCX bundles
+    try:
+        from stages.brief_export import briefs_to_csv, briefs_to_docx
+        csv_path = output_dir / "all_briefs.csv"
+        csv_path.write_bytes(briefs_to_csv(briefs))
+        paths.append(csv_path)
+        try:
+            docx_path = output_dir / "all_briefs.docx"
+            docx_path.write_bytes(briefs_to_docx(briefs))
+            paths.append(docx_path)
+        except RuntimeError as e:
+            print(f"  [export] DOCX skipped: {e}")
+    except Exception as e:
+        print(f"  [export] CSV/DOCX skipped: {e}")
+
     return paths

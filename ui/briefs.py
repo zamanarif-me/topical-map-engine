@@ -287,6 +287,38 @@ def render_briefs():
                 key="dl_all_briefs",
             )
 
+        # CSV + DOCX bundles
+        try:
+            from stages.brief_export import briefs_to_csv, briefs_to_docx
+
+            pillar_slug = (package.pillar_id or "briefs").replace("/", "_")
+
+            csv_bytes = briefs_to_csv(package.briefs)
+            st.download_button(
+                label="📊 all_briefs.csv",
+                data=csv_bytes,
+                file_name=f"{pillar_slug}_briefs.csv",
+                mime="text/csv",
+                key="dl_all_briefs_csv",
+            )
+
+            try:
+                docx_bytes = briefs_to_docx(
+                    package.briefs,
+                    title=f"Content Briefs — {package.pillar_title}",
+                )
+                st.download_button(
+                    label="📄 all_briefs.docx",
+                    data=docx_bytes,
+                    file_name=f"{pillar_slug}_briefs.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="dl_all_briefs_docx",
+                )
+            except RuntimeError as e:
+                st.warning(f"DOCX export unavailable: {e}")
+        except Exception as e:
+            st.warning(f"CSV/DOCX export failed: {e}")
+
         # Preview
         st.markdown("<br>", unsafe_allow_html=True)
         for page_id, brief in package.briefs.items():
